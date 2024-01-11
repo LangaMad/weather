@@ -1,29 +1,37 @@
-from django.http import JsonResponse
+from django.shortcuts import render
+import requests, json
+from .models import City
+from .forms import CityForm
 from django.views.decorators.cache import cache_page
-from rest_framework.views import APIView
-from rest_framework.response import Response
-import requests
 
 
-class WeatherAPIView(APIView):
-    @cache_page(1800)
-    def get(self, request):
-        city_name = request.GET.get('city', '')
-        if not city_name:
-            return JsonResponse({'error': 'Необходимо написать город'}, status=400)
+# Create your views here.
+@cache_page(1800)
+def index(request):
+    cities = City.objects.all()
+    url = 'https://api.openweathermap.org/data/2.5/weather?q={}&units=imperial&appid=931b9e6d54f671287353d688f0893785'
 
-        api_key = '931b9e6d54f671287353d688f0893785'
-        base_url = 'http://api.openweathermap.org/data/2.5/weather'
+    if request.method == 'POST':
+        form = CityForm(request.POST)
+        form.save()
 
-        response = requests.get(f'{base_url}?q={city_name}&appid={api_key}&units=metric')
-        data = response.json()
+    form = CityForm()
+    weather_data = []
+    for city in cities:
+        city_weather = requests.get(url.format(city)).json()
 
-        if response.status_code == 200:
-            weather_data = {
-                'температура': data['main']['temp'],
-                'давление': data['main']['pressure'],
-                'скорость_ветра': data['wind']['speed'],
+        temperature = city_weather.get('main', {}).get('temp')
+        wind_speed = city_weather.get('wind', {}).get('speed')
+        pressure = city_weather.get('main', {}).get('pressure')
+
+        if temperature is not None and wind_speed is not None and pressure is not None:
+            weather = {
+                'city': city,
+                'temperature': temperature,
+                'wind_speed': wind_speed,
+                'pressure': pressure,
             }
-            return JsonResponse(weather_data)
-        else:
-            return JsonResponse({'error': 'Не удалось получить данные(( '}, status=response.status_code)
+            weather_data.append(weather)
+
+    context = {'weather_data': weather_data, 'form': form}
+    return render(request, 'index.html', context)  # returns index.html template
